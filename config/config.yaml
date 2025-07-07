@@ -1,0 +1,19 @@
+# USPS API Configuration
+usps:
+  userid: "{{ lookup('env', 'USPS_USERID') | default('YOUR_USERID') }}"
+  test_mode: true  # Set to false for production
+  base_url: "http://production.shippingapis.com/ShippingAPI.dll"
+
+# Application settings
+app:
+  name: "zippuff"
+  version: "1.0.0"
+  debug: false
+  host: "0.0.0.0"
+  port: 59080
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/zippuff.log" 

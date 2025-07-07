@@ -1,0 +1,25 @@
+[Unit]
+Description=Zippuff USPS API Tool
+After=network.target
+
+[Service]
+Type=simple
+User={{ app_user }}
+Group={{ app_group }}
+WorkingDirectory={{ app_dir }}
+Environment=PATH={{ app_dir }}/venv/bin
+ExecStart={{ app_dir }}/venv/bin/python {{ app_dir }}/src/web_app.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ app_dir }}/logs
+
+[Install]
+WantedBy=multi-user.target 

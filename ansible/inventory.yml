@@ -1,0 +1,17 @@
+all:
+  children:
+    zippuff_servers:
+      hosts:
+        zippuff-prod:
+          ansible_host: "{{ lookup('env', 'ZIPPUFF_HOST') | default('localhost') }}"
+          ansible_user: "{{ lookup('env', 'ZIPPUFF_USER') | default('ubuntu') }}"
+          ansible_ssh_private_key_file: "{{ lookup('env', 'ZIPPUFF_SSH_KEY') | default('~/.ssh/id_rsa') }}"
+          ansible_python_interpreter: /usr/bin/python3
+      vars:
+        app_name: zippuff
+        app_user: zippuff
+        app_group: zippuff
+        app_dir: /opt/zippuff
+        app_port: 8080
+        app_host: 0.0.0.0
+        python_version: "3.9" 

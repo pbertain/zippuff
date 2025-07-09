@@ -7,6 +7,14 @@ import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
 
+# Load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv not installed, continue without it
+    pass
+
 
 class ConfigManager:
     """Manages application configuration with secure credential handling"""
@@ -48,10 +56,11 @@ class ConfigManager:
                 self._config['usps'] = {}
             self._config['usps']['userid'] = os.getenv('USPS_USERID')
         
-        if os.getenv('USPS_TEST_MODE'):
+        test_mode = os.getenv('USPS_TEST_MODE')
+        if test_mode:
             if 'usps' not in self._config:
                 self._config['usps'] = {}
-            self._config['usps']['test_mode'] = os.getenv('USPS_TEST_MODE').lower() == 'true'
+            self._config['usps']['test_mode'] = test_mode.lower() == 'true'
         
         # App settings
         if os.getenv('APP_HOST'):
@@ -59,15 +68,20 @@ class ConfigManager:
                 self._config['app'] = {}
             self._config['app']['host'] = os.getenv('APP_HOST')
         
-        if os.getenv('APP_PORT'):
+        app_port = os.getenv('APP_PORT')
+        if app_port:
             if 'app' not in self._config:
                 self._config['app'] = {}
-            self._config['app']['port'] = int(os.getenv('APP_PORT'))
+            try:
+                self._config['app']['port'] = int(app_port)
+            except ValueError:
+                pass  # Use default port if invalid
         
-        if os.getenv('APP_DEBUG'):
+        app_debug = os.getenv('APP_DEBUG')
+        if app_debug:
             if 'app' not in self._config:
                 self._config['app'] = {}
-            self._config['app']['debug'] = os.getenv('APP_DEBUG').lower() == 'true'
+            self._config['app']['debug'] = app_debug.lower() == 'true'
     
     def get(self, key: str, default: Any = None) -> Any:
         """

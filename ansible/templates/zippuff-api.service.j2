@@ -1,6 +1,7 @@
 [Unit]
-Description=Zippuff USPS API Tool
+Description=Zippuff USPS API Service
 After=network.target
+Wants=network.target
 
 [Service]
 Type=simple
@@ -8,7 +9,9 @@ User={{ app_user }}
 Group={{ app_group }}
 WorkingDirectory={{ app_dir }}
 Environment=PATH={{ app_dir }}/venv/bin
-ExecStart={{ app_dir }}/venv/bin/python {{ app_dir }}/web_app.py
+Environment=FLASK_APP={{ app_dir }}/web_api.py
+Environment=FLASK_ENV=production
+ExecStart={{ app_dir }}/venv/bin/python {{ app_dir }}/web_api.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

@@ -2,20 +2,25 @@
 Flask web API for USPS ZIP code lookup tool
 """
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import logging
 from pathlib import Path
 import sys
+import os
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config_manager import ConfigManager
-from usps_client import USPSClient, AddressInfo
+from usps_api_service import get_usps_service, USPSResponse
 
 
 def create_app():
     """Create and configure Flask application"""
     app = Flask(__name__)
+    
+    # Enable CORS for all routes
+    CORS(app, origins=["*"])
     
     # Initialize configuration
     config = ConfigManager()
@@ -34,12 +39,13 @@ def create_app():
         ]
     )
     
-    # Initialize USPS client
-    usps_config = config.get_usps_config()
-    usps_client = USPSClient(
-        userid=usps_config['userid'],
-        test_mode=usps_config['test_mode']
-    )
+    # Initialize USPS API service
+    try:
+        usps_service = get_usps_service()
+        app.logger.info("USPS API service initialized successfully")
+    except Exception as e:
+        app.logger.error(f"Failed to initialize USPS API service: {e}")
+        usps_service = None
     
     @app.route('/health', methods=['GET'])
     def health_check():
@@ -53,6 +59,11 @@ def create_app():
     @app.route('/api/zip-to-city', methods=['GET'])
     def zip_to_city():
         """Look up city and state from ZIP code"""
+        if not usps_service:
+            return jsonify({
+                'error': 'USPS API service not available'
+            }), 503
+        
         zipcode = request.args.get('zipcode')
         
         if not zipcode:
@@ -60,22 +71,27 @@ def create_app():
                 'error': 'ZIP code parameter is required'
             }), 400
         
-        result = usps_client.zip_to_city_state(zipcode)
+        result = usps_service.zip_to_city_state(zipcode)
         
-        if result.error:
+        if not result.success:
             return jsonify({
                 'error': result.error
             }), 400
         
         return jsonify({
-            'zipcode': result.zipcode,
-            'city': result.city,
-            'state': result.state
+            'zipcode': result.data.zipcode if result.data else None,
+            'city': result.data.city if result.data else None,
+            'state': result.data.state if result.data else None
         })
     
     @app.route('/api/city-to-zip', methods=['GET'])
     def city_to_zip():
         """Look up ZIP code from city and state"""
+        if not usps_service:
+            return jsonify({
+                'error': 'USPS API service not available'
+            }), 503
+        
         city = request.args.get('city')
         state = request.args.get('state')
         
@@ -84,22 +100,27 @@ def create_app():
                 'error': 'Both city and state parameters are required'
             }), 400
         
-        result = usps_client.city_state_to_zip(city, state)
+        result = usps_service.city_state_to_zip(city, state)
         
-        if result.error:
+        if not result.success:
             return jsonify({
                 'error': result.error
             }), 400
         
         return jsonify({
-            'zipcode': result.zipcode,
-            'city': result.city,
-            'state': result.state
+            'zipcode': result.data.zipcode if result.data else None,
+            'city': result.data.city if result.data else None,
+            'state': result.data.state if result.data else None
         })
     
     @app.route('/api/validate-zip', methods=['GET'])
     def validate_zip():
         """Validate ZIP code format"""
+        if not usps_service:
+            return jsonify({
+                'error': 'USPS API service not available'
+            }), 503
+        
         zipcode = request.args.get('zipcode')
         
         if not zipcode:
@@ -107,7 +128,7 @@ def create_app():
                 'error': 'ZIP code parameter is required'
             }), 400
         
-        is_valid = usps_client.validate_zipcode(zipcode)
+        is_valid = usps_service.validate_zipcode(zipcode)
         
         return jsonify({
             'zipcode': zipcode,
@@ -117,10 +138,16 @@ def create_app():
     @app.route('/api/config', methods=['GET'])
     def get_config():
         """Get current configuration (without sensitive data)"""
+        if usps_service:
+            status = usps_service.get_api_status()
+        else:
+            status = {'status': 'unavailable'}
+        
         return jsonify({
-            'test_mode': usps_config['test_mode'],
-            'base_url': usps_config['base_url'],
-            'app_version': config.get('app.version', '1.0.0')
+            'test_mode': status.get('test_mode', False),
+            'base_url': status.get('base_url', ''),
+            'app_version': config.get('app.version', '1.0.0'),
+            'api_status': status.get('status', 'unknown')
         })
     
     @app.route('/', methods=['GET'])
@@ -150,6 +177,14 @@ def main():
     """Run the Flask application"""
     config = ConfigManager()
     app_config = config.get_app_config()
+    
+    # Use API_PORT if available, otherwise use regular port
+    api_port = os.getenv('API_PORT')
+    if api_port:
+        try:
+            app_config['port'] = int(api_port)
+        except ValueError:
+            pass  # Use default port if invalid
     
     app = create_app()
     

@@ -1,16 +1,19 @@
 """
 Command-line interface for USPS ZIP code lookup tool
+Updated to use the API service instead of direct USPS calls
 """
 import argparse
 import sys
 import logging
+import requests
+import os
 from pathlib import Path
+from typing import Optional
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config_manager import ConfigManager
-from usps_client import USPSClient, AddressInfo
 
 
 def setup_logging(config: ConfigManager):
@@ -31,31 +34,92 @@ def setup_logging(config: ConfigManager):
     )
 
 
-def print_result(result: AddressInfo, operation: str):
+def get_api_service_url():
+    """Get API service URL from environment or config"""
+    api_port = os.getenv('API_PORT', '59081')
+    api_host = os.getenv('API_HOST', 'localhost')
+    return f"http://{api_host}:{api_port}"
+
+
+def call_api_service(endpoint: str, params: Optional[dict] = None) -> dict:
+    """
+    Call the API service
+    
+    Args:
+        endpoint: API endpoint (e.g., '/api/zip-to-city')
+        params: Query parameters
+        
+    Returns:
+        API response as dictionary
+    """
+    api_url = get_api_service_url()
+    url = f"{api_url}{endpoint}"
+    
+    try:
+        response = requests.get(url, params=params or {}, timeout=10)
+        return {
+            'success': response.status_code == 200,
+            'status_code': response.status_code,
+            'data': response.json() if response.status_code == 200 else None,
+            'error': response.json().get('error') if response.status_code != 200 else None
+        }
+    except requests.exceptions.ConnectionError:
+        return {
+            'success': False,
+            'status_code': 0,
+            'data': None,
+            'error': f"Failed to connect to API service at {api_url}"
+        }
+    except requests.exceptions.Timeout:
+        return {
+            'success': False,
+            'status_code': 0,
+            'data': None,
+            'error': "API service request timed out"
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'status_code': 0,
+            'data': None,
+            'error': f"API service error: {e}"
+        }
+
+
+def print_result(result: dict, operation: str):
     """Print formatted result"""
-    if result.error:
-        print(f"❌ Error: {result.error}")
+    if not result['success']:
+        print(f"❌ Error: {result['error']}")
+        return
+    
+    data = result['data']
+    if not data:
+        print(f"❌ Error: No data received from API service")
         return
     
     print(f"✅ {operation} Result:")
-    if result.zipcode:
-        print(f"   ZIP Code: {result.zipcode}")
-    if result.city:
-        print(f"   City: {result.city}")
-    if result.state:
-        print(f"   State: {result.state}")
+    if data.get('zipcode'):
+        print(f"   ZIP Code: {data['zipcode']}")
+    if data.get('city'):
+        print(f"   City: {data['city']}")
+    if data.get('state'):
+        print(f"   State: {data['state']}")
+    if data.get('valid') is not None:
+        print(f"   Valid: {'Yes' if data['valid'] else 'No'}")
 
 
 def main():
     """Main CLI function"""
     parser = argparse.ArgumentParser(
-        description="USPS ZIP Code Lookup Tool",
+        description="USPS ZIP Code Lookup Tool (API Client)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   %(prog)s zip-to-city 90210
   %(prog)s city-to-zip "Beverly Hills" CA
   %(prog)s validate 90210
+  %(prog)s config
+  %(prog)s test
         """
     )
     
@@ -78,7 +142,7 @@ Examples:
     config_parser = subparsers.add_parser('config', help='Show current configuration')
     
     # Test command
-    test_parser = subparsers.add_parser('test', help='Test USPS API connection')
+    test_parser = subparsers.add_parser('test', help='Test API service connection')
     
     args = parser.parse_args()
     
@@ -92,57 +156,60 @@ Examples:
         setup_logging(config)
         logger = logging.getLogger(__name__)
         
-        if not config.validate_config():
-            print("❌ Configuration error: USPS UserID not set")
-            print("Please set USPS_USERID environment variable or update config/config.yaml")
-            sys.exit(1)
-        
     except Exception as e:
         print(f"❌ Configuration error: {e}")
-        sys.exit(1)
-    
-    # Initialize USPS client
-    try:
-        usps_config = config.get_usps_config()
-        client = USPSClient(
-            userid=usps_config['userid'],
-            test_mode=usps_config['test_mode']
-        )
-    except Exception as e:
-        print(f"❌ Failed to initialize USPS client: {e}")
         sys.exit(1)
     
     # Handle commands
     try:
         if args.command == 'zip-to-city':
-            result = client.zip_to_city_state(args.zipcode)
+            result = call_api_service('/api/zip-to-city', {'zipcode': args.zipcode})
             print_result(result, "ZIP to City/State")
             
         elif args.command == 'city-to-zip':
-            result = client.city_state_to_zip(args.city, args.state)
+            result = call_api_service('/api/city-to-zip', {
+                'city': args.city,
+                'state': args.state
+            })
             print_result(result, "City/State to ZIP")
             
         elif args.command == 'validate':
-            is_valid = client.validate_zipcode(args.zipcode)
-            if is_valid:
-                print(f"✅ ZIP code {args.zipcode} is valid")
+            result = call_api_service('/api/validate-zip', {'zipcode': args.zipcode})
+            if result['success'] and result['data']:
+                is_valid = result['data'].get('valid', False)
+                if is_valid:
+                    print(f"✅ ZIP code {args.zipcode} is valid")
+                else:
+                    print(f"❌ ZIP code {args.zipcode} is invalid")
             else:
-                print(f"❌ ZIP code {args.zipcode} is invalid")
+                print(f"❌ Error: {result['error']}")
                 
         elif args.command == 'config':
-            print("📋 Current Configuration:")
-            print(f"   USPS UserID: {usps_config['userid']}")
-            print(f"   Test Mode: {usps_config['test_mode']}")
-            print(f"   Base URL: {usps_config['base_url']}")
-            
-        elif args.command == 'test':
-            print("🧪 Testing USPS API connection...")
-            test_result = client.zip_to_city_state("90210")
-            if test_result.error:
-                print(f"❌ API test failed: {test_result.error}")
+            result = call_api_service('/api/config')
+            if result['success'] and result['data']:
+                config_data = result['data']
+                print("📋 API Service Configuration:")
+                print(f"   API Service: {get_api_service_url()}")
+                if 'api_status' in config_data:
+                    api_status = config_data['api_status']
+                    if isinstance(api_status, dict):
+                        print(f"   Test Mode: {api_status.get('test_mode', 'Unknown')}")
+                        print(f"   Base URL: {api_status.get('base_url', 'Unknown')}")
+                        print(f"   Status: {api_status.get('status', 'Unknown')}")
+                    else:
+                        print(f"   Status: {api_status}")
+                print(f"   Web Version: {config_data.get('web_version', 'Unknown')}")
             else:
-                print("✅ API connection successful!")
-                print_result(test_result, "Test")
+                print(f"❌ Error getting configuration: {result['error']}")
+                
+        elif args.command == 'test':
+            print("🧪 Testing API service connection...")
+            result = call_api_service('/api/zip-to-city', {'zipcode': '90210'})
+            if result['success']:
+                print("✅ API service connection successful!")
+                print_result(result, "Test")
+            else:
+                print(f"❌ API service test failed: {result['error']}")
                 
     except KeyboardInterrupt:
         print("\n👋 Operation cancelled by user")

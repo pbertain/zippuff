@@ -4,9 +4,11 @@
 .env.development.local
 .env.test.local
 .env.production.local
+deployment.env
 
 # MacOS files
 .DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

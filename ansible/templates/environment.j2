@@ -1,11 +1,15 @@
-# USPS API Configuration
-USPS_USERID={{ usps_userid }}
+# USPS OAuth 2.0 Configuration
+USPS_CONSUMER_KEY={{ usps_consumer_key }}
+USPS_CONSUMER_SECRET={{ usps_consumer_secret }}
 USPS_TEST_MODE={{ usps_test_mode }}
 
 # Application Configuration
 APP_HOST={{ app_host }}
 APP_PORT={{ app_port }}
 APP_DEBUG={{ app_debug }}
+
+# API Service Configuration (different port for API service)
+API_PORT={{ api_port | default(59081) }}
 
 # Logging Configuration
 LOG_LEVEL=INFO 

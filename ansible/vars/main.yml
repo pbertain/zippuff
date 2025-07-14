@@ -1,10 +1,11 @@
 # Application Configuration
 app_name: zippuff
-app_user: zippuff
-app_group: zippuff
+app_user: www-data
+app_group: www-data
 app_dir: /opt/zippuff
 app_port: 59080
 app_host: 0.0.0.0
+api_port: 59081
 
 # Python Configuration
 python_version: "3.9"
@@ -15,7 +16,9 @@ nginx_server_name: "{{ lookup('env', 'NGINX_SERVER_NAME') | default('zippuff.loc
 nginx_ssl_cert: "{{ lookup('env', 'NGINX_SSL_CERT') | default('') }}"
 nginx_ssl_key: "{{ lookup('env', 'NGINX_SSL_KEY') | default('') }}"
 
-# Environment Variables (will be overridden by .env file)
-usps_userid: "{{ lookup('env', 'USPS_USERID') | default('YOUR_USERID') }}"
+# USPS API Credentials - Load from environment variables
+usps_userid: "{{ lookup('env', 'USPS_USERID') | default('') }}"
+usps_consumer_key: "{{ lookup('env', 'USPS_CONSUMER_KEY') | default('') }}"
+usps_consumer_secret: "{{ lookup('env', 'USPS_CONSUMER_SECRET') | default('') }}"
 usps_test_mode: "{{ lookup('env', 'USPS_TEST_MODE') | default('true') }}"
 app_debug: "{{ lookup('env', 'APP_DEBUG') | default('false') }}" 

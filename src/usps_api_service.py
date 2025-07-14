@@ -359,7 +359,7 @@ class USPSAPIService:
         
         self.logger.info(f"Looking up city/state for ZIP code: {zipcode}")
         
-        # Use USPS Address API (v3)
+        # Use USPS Address API (v3) - correct endpoint for ZIP to city/state
         params = {
             'ZIPCode': zipcode
         }
@@ -393,7 +393,7 @@ class USPSAPIService:
         
         self.logger.info(f"Looking up ZIP code for city: {city}, state: {state}")
         
-        # Use USPS Address API (v3)
+        # Use USPS Address API (v3) - correct endpoint for city/state to ZIP
         params = {
             'city': city,
             'state': state

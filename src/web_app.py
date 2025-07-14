@@ -394,8 +394,12 @@ HTML_TEMPLATE = """
             showLoading();
             
             try {
+                console.log('Making API call to:', `${API_BASE_URL}/api/zip-to-city?zipcode=${encodeURIComponent(zipcode)}`);
                 const response = await fetch(`${API_BASE_URL}/api/zip-to-city?zipcode=${encodeURIComponent(zipcode)}`);
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
                 const data = await response.json();
+                console.log('Response data:', data);
                 
                 if (response.ok) {
                     showResult('zipToCityResult', data);
@@ -403,7 +407,8 @@ HTML_TEMPLATE = """
                     showResult('zipToCityResult', data, true);
                 }
             } catch (error) {
-                showResult('zipToCityResult', { error: 'Network error. Please try again.' }, true);
+                console.error('Network error:', error);
+                showResult('zipToCityResult', { error: `Network error: ${error.message}` }, true);
             } finally {
                 hideLoading();
             }
@@ -1013,14 +1018,30 @@ def create_app():
     # Get API service URL from environment or config
     api_port = os.getenv('API_PORT', '59081')
     api_host = os.getenv('API_HOST', '192.168.3.78')  # Use server IP instead of localhost
+    
+    # Default API base URL (will be updated per request)
     api_base_url = f"http://{api_host}:{api_port}"
     
     app.logger.info(f"Web interface configured to use API service at: {api_base_url}")
     
+    def get_api_base_url():
+        """Get the appropriate API base URL based on request context"""
+        try:
+            # Use relative URL for HTTPS compatibility
+            if request.headers.get('X-Forwarded-Proto') == 'https' or request.headers.get('X-Forwarded-SSL') == 'on':
+                # If accessed via HTTPS, use relative URL that goes through nginx
+                return "/api-proxy"
+            else:
+                # Fallback to direct IP for HTTP access
+                return f"http://{api_host}:{api_port}"
+        except RuntimeError:
+            # Outside of request context, use default
+            return api_base_url
+    
     @app.route('/')
     def index():
         """Main page with USPS-themed frontend"""
-        return render_template_string(HTML_TEMPLATE, api_base_url=api_base_url)
+        return render_template_string(HTML_TEMPLATE, api_base_url=get_api_base_url())
     
     @app.route('/health', methods=['GET'])
     def health_check():
@@ -1037,7 +1058,38 @@ def create_app():
         return render_template_string(HEALTH_TEMPLATE, 
                                    api_healthy=api_healthy, 
                                    api_data=api_data,
-                                   api_base_url=api_base_url)
+                                   api_base_url=get_api_base_url())
+    
+    @app.route('/debug', methods=['GET'])
+    def debug():
+        """Debug endpoint to show API configuration"""
+        return jsonify({
+            'api_base_url': get_api_base_url(),
+            'api_host': os.getenv('API_HOST', '192.168.3.78'),
+            'api_port': os.getenv('API_PORT', '59081'),
+            'test_url': f"{get_api_base_url()}/api/zip-to-city?zipcode=20012"
+        })
+    
+    @app.route('/api-proxy/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+    def api_proxy(subpath):
+        """Proxy API calls to the API service"""
+        try:
+            # Forward the request to the API service
+            api_url = f"http://localhost:59081/{subpath}"
+            response = requests.request(
+                method=request.method,
+                url=api_url,
+                params=request.args,
+                headers={key: value for key, value in request.headers if key != 'Host'},
+                timeout=10
+            )
+            
+            # Return the response from the API service
+            return response.content, response.status_code, dict(response.headers)
+            
+        except Exception as e:
+            app.logger.error(f"API proxy error: {e}")
+            return jsonify({'error': f'API proxy error: {e}'}), 500
     
     @app.route('/api/config', methods=['GET'])
     def get_config():
@@ -1049,16 +1101,16 @@ def create_app():
                 api_config = response.json()
                 return render_template_string(CONFIG_TEMPLATE, 
                                            config=api_config,
-                                           api_base_url=api_base_url)
+                                           api_base_url=get_api_base_url())
             else:
                 return render_template_string(CONFIG_TEMPLATE, 
                                            config={'error': 'API service unavailable'},
-                                           api_base_url=api_base_url)
+                                           api_base_url=get_api_base_url())
         except Exception as e:
             app.logger.error(f"Failed to get API config: {e}")
             return render_template_string(CONFIG_TEMPLATE, 
                                        config={'error': f'Connection error: {e}'},
-                                       api_base_url=api_base_url)
+                                       api_base_url=get_api_base_url())
     
     return app
 
